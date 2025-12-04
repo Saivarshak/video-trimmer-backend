@@ -76,3 +76,7 @@ app.post("/trim", (req, res) => {
 // Server start
 const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => console.log("Running on port", PORT));
+
+app.get("/", (req, res) => {
+  res.send("Backend is running");
+});
