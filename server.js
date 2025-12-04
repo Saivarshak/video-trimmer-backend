@@ -34,6 +34,10 @@ const upload = multer({ storage });
 
 // Upload route
 app.post("/upload", upload.single("video"), (req, res) => {
+  console.log("Received /upload request");
+  console.log("Request body:", req.body);
+  console.log("File info:", req.file);
+
   if (!req.file) {
     return res.status(400).json({ success: false, error: "No file uploaded" });
   }
@@ -46,9 +50,10 @@ app.post("/upload", upload.single("video"), (req, res) => {
 
 // Trim route
 app.post("/trim", (req, res) => {
+  console.log("Received /trim request:", req.body);
   const { filename, start, end } = req.body;
 
-  if (!filename || !start || !end) {
+  if (!filename || start === undefined || end === undefined) {
     return res.json({ success: false, error: "Missing parameters" });
   }
 
@@ -60,6 +65,7 @@ app.post("/trim", (req, res) => {
 
   exec(command, (err) => {
     if (err) {
+      console.error("FFmpeg error:", err);
       return res.json({ success: false, error: err.message });
     }
 
