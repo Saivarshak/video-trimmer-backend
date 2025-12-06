@@ -8,9 +8,6 @@ const fs = require("fs");
 
 const app = express();
 
-// --------------------------------------
-// Basic CORS
-// --------------------------------------
 app.use(cors());
 app.use(express.json());
 
@@ -23,13 +20,13 @@ if (!fs.existsSync("trimmed")) fs.mkdirSync("trimmed");
 // Serve trimmed files publicly
 app.use("/trimmed", express.static(path.join(__dirname, "trimmed")));
 
-// Health check route
+// Health check
 app.get("/", (req, res) => {
   res.send("Video Trimmer Backend Running");
 });
 
 // --------------------------------------
-// Multer Storage for uploads
+// Multer storage
 // --------------------------------------
 const storage = multer.diskStorage({
   destination: "uploads",
@@ -37,10 +34,11 @@ const storage = multer.diskStorage({
     cb(null, Date.now() + ".mp4");
   }
 });
+
 const upload = multer({ storage });
 
 // --------------------------------------
-// Upload Route
+// File upload route
 // --------------------------------------
 app.post("/upload", upload.single("video"), (req, res) => {
   if (!req.file) {
@@ -54,16 +52,22 @@ app.post("/upload", upload.single("video"), (req, res) => {
 });
 
 // --------------------------------------
-// Trim Video Route
+// Trim route - FIXED VERSION
+// Accepts: video file + start + end
 // --------------------------------------
-app.post("/trim", (req, res) => {
-  const { filename, start, end } = req.body;
+app.post("/trim", upload.single("video"), (req, res) => {
+  const { start, end } = req.body;
 
-  if (!filename || start === undefined || end === undefined) {
-    return res.json({ success: false, error: "Missing parameters" });
+  // check video presence
+  if (!req.file) {
+    return res.status(400).json({ success: false, error: "No video provided for trimming" });
   }
 
-  const inputPath = path.join(__dirname, "uploads", filename);
+  if (start === undefined || end === undefined) {
+    return res.json({ success: false, error: "Missing start or end time" });
+  }
+
+  const inputPath = path.join(__dirname, "uploads", req.file.filename);
   const outputName = "trim-" + Date.now() + ".mp4";
   const outputPath = path.join(__dirname, "trimmed", outputName);
 
@@ -74,10 +78,7 @@ app.post("/trim", (req, res) => {
       return res.json({ success: false, error: err.message });
     }
 
-    res.json({
-      success: true,
-      url: "/trimmed/" + outputName
-    });
+    res.sendFile(outputPath);
   });
 });
 
@@ -88,4 +89,3 @@ const PORT = process.env.PORT || 5000;
 app.listen(PORT, () => {
   console.log(`Backend running on port ${PORT}`);
 });
-  
