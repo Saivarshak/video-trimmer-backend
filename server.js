@@ -84,7 +84,8 @@ app.post("/trim", (req, res) => {
   const outputName = "trim-" + Date.now() + ".mp4";
   const outputPath = path.join(__dirname, "trimmed", outputName);
 
-  const command = `"${ffmpegPath}" -i "${inputPath}" -ss ${start} -to ${end} -c copy "${outputPath}"`;
+  const command = `"${ffmpegPath}" -i "${inputPath}" -ss ${start} -to ${end} -c:v libx264 -c:a aac -strict experimental "${outputPath}"`;
+
 
   exec(command, (err) => {
     if (err) {
