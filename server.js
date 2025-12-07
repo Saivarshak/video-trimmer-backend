@@ -8,22 +8,24 @@ const fs = require("fs");
 
 const app = express();
 
+// Create folders if they don't exist
+const uploadDir = path.join(__dirname, "uploads");
+const trimmedDir = path.join(__dirname, "trimmed");
+
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
+if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
+
 app.use(cors());
 app.use(express.json());
 
-// --------------------------------------
-// Ensure required folders exist
-// --------------------------------------
-if (!fs.existsSync("uploads")) fs.mkdirSync("uploads");
-if (!fs.existsSync("trimmed")) fs.mkdirSync("trimmed");
-
 // Serve trimmed files publicly
-app.use("/trimmed", express.static(path.join(__dirname, "trimmed")));
+app.use("/trimmed", express.static(trimmedDir));
 
-// Health check
+// Health check route
 app.get("/", (req, res) => {
   res.send("Video Trimmer Backend Running");
 });
+
 
 // --------------------------------------
 // Multer storage
