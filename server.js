@@ -22,7 +22,12 @@ if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
 // ===========================
 app.use(cors());
 app.use(express.json());
-app.use("/trimmed", express.static(trimmedDir));
+app.use("/trimmed", express.static(trimmedDir, {
+  setHeaders: (res, path) => {
+    res.set("Content-Type", "video/mp4");
+  }
+}));
+
 
 // ===========================
 // Health check
