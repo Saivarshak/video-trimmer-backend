@@ -50,24 +50,18 @@ app.post("/upload", upload.single("video"), (req, res) => {
     filename: req.file.filename
   });
 });
+app.post("/trim", (req, res) => {
+  const { filename, start, end } = req.body;
 
-// --------------------------------------
-// Trim route - FIXED VERSION
-// Accepts: video file + start + end
-// --------------------------------------
-app.post("/trim", upload.single("video"), (req, res) => {
-  const { start, end } = req.body;
-
-  // check video presence
-  if (!req.file) {
-    return res.status(400).json({ success: false, error: "No video provided for trimming" });
+  if (!filename) {
+    return res.status(400).json({ success: false, error: "Filename is required" });
   }
 
   if (start === undefined || end === undefined) {
     return res.json({ success: false, error: "Missing start or end time" });
   }
 
-  const inputPath = path.join(__dirname, "uploads", req.file.filename);
+  const inputPath = path.join(__dirname, "uploads", filename);
   const outputName = "trim-" + Date.now() + ".mp4";
   const outputPath = path.join(__dirname, "trimmed", outputName);
 
@@ -80,12 +74,4 @@ app.post("/trim", upload.single("video"), (req, res) => {
 
     res.sendFile(outputPath);
   });
-});
-
-// --------------------------------------
-// Start server
-// --------------------------------------
-const PORT = process.env.PORT || 5000;
-app.listen(PORT, () => {
-  console.log(`Backend running on port ${PORT}`);
 });
