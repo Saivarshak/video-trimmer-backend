@@ -80,7 +80,11 @@ app.post("/upload", upload.single("video"), (req, res) => {
 // Trim route (FIXED)
 // ===========================
 app.post("/trim", (req, res) => {
-  const { filename, start, end } = req.body;
+  
+  const { filename } = req.body;
+  const start = Number(req.body.start);
+  const end = Number(req.body.end);
+
 
   if (!filename) {
     return res.status(400).json({
@@ -89,12 +93,13 @@ app.post("/trim", (req, res) => {
     });
   }
 
-  if (start === undefined || end === undefined) {
-    return res.status(400).json({
-      success: false,
-      error: "Missing start or end time"
-    });
-  }
+  if (Number.isNaN(start) || Number.isNaN(end)) {
+  return res.status(400).json({
+    success: false,
+    error: "Invalid start or end time"
+  });
+}
+
 
   const inputPath = path.join(uploadDir, filename);
 
