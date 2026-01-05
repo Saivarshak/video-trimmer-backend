@@ -23,7 +23,7 @@ if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
 app.use(cors({
   origin: "https://videotrimmer.online",
   methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
+  allowedHeaders: "*"
 }));
 
 app.use(express.json({ limit: "500mb" }));
