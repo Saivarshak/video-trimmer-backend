@@ -20,10 +20,21 @@ if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
 // ===========================
 // Middlewares
 // ===========================
-app.use(cors({
-  origin: "*"
-}));
+
+
+
 app.options("*", cors());
+
+
+app.use(cors({
+  origin: [
+    "https://videotrimmer.online",
+    "https://www.videotrimmer.online"
+  ],
+  methods: ["GET", "POST", "OPTIONS"],
+  allowedHeaders: ["Content-Type"]
+}));
+
 
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
