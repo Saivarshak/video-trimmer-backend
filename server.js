@@ -21,9 +21,7 @@ if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
 // Middlewares
 // ===========================
 app.use(cors({
-  origin: "https://videotrimmer.online",
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: "*"
+  origin: "*"
 }));
 app.options("*", cors());
 
