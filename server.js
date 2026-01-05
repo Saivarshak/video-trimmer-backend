@@ -110,3 +110,39 @@ app.post("/trim", (req, res) => {
 // ===========================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
+
+
+// ===========================
+// Auto-delete old files (24h)
+// ===========================
+const AUTO_DELETE_INTERVAL = 30 * 60 * 1000; // 30 minutes
+const FILE_MAX_AGE = 48 * 60 * 60 * 1000; // 48 hours
+
+function deleteOldFiles(dir) {
+  fs.readdir(dir, (err, files) => {
+    if (err) return console.error(`Error reading ${dir}:`, err);
+
+    files.forEach(file => {
+      const filePath = path.join(dir, file);
+      fs.stat(filePath, (err, stats) => {
+        if (err) return console.error(`Error stat ${filePath}:`, err);
+
+        const now = Date.now();
+        const age = now - stats.mtimeMs;
+
+        if (age > FILE_MAX_AGE) {
+          fs.unlink(filePath, err => {
+            if (err) console.error(`Error deleting ${filePath}:`, err);
+            else console.log(`Deleted old file: ${filePath}`);
+          });
+        }
+      });
+    });
+  });
+}
+
+// Run cleanup every hour
+setInterval(() => {
+  deleteOldFiles(uploadDir);
+  deleteOldFiles(trimmedDir);
+}, AUTO_DELETE_INTERVAL);
