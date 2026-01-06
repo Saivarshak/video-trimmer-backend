@@ -5,34 +5,18 @@ const { exec } = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
 const path = require("path");
 const fs = require("fs");
+const https = require("https");
 
 const app = express();
 
 // ===========================
-// Allowed origins (CORS FIX)
-// ===========================
-const allowedOrigins = [
-  "https://videotrimmer.online",
-  "https://www.videotrimmer.online"
-];
-
-// ===========================
-// Middlewares
+// Middlewares (CORS FIXED)
 // ===========================
 app.use(cors({
-  origin: function (origin, callback) {
-    if (!origin) return callback(null, true); // allow Postman / server calls
-    if (allowedOrigins.includes(origin)) {
-      return callback(null, true);
-    }
-    return callback(new Error("Not allowed by CORS"));
-  },
+  origin: true,
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"]
 }));
-
-// Handle preflight requests
-app.options("*", cors());
 
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
@@ -47,8 +31,9 @@ if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
 
 // ===========================
-// Serve trimmed videos
+// Serve uploaded & trimmed videos
 // ===========================
+app.use("/uploads", express.static(uploadDir));
 app.use("/trimmed", express.static(trimmedDir, {
   setHeaders: res => res.set("Content-Type", "video/mp4")
 }));
@@ -61,7 +46,7 @@ app.get("/", (req, res) => {
 });
 
 // ===========================
-// Multer storage config
+// Multer storage
 // ===========================
 const storage = multer.diskStorage({
   destination: (req, file, cb) => cb(null, uploadDir),
@@ -71,7 +56,7 @@ const storage = multer.diskStorage({
 
 const upload = multer({
   storage,
-  limits: { fileSize: 500 * 1024 * 1024 } // 500 MB
+  limits: { fileSize: 500 * 1024 * 1024 }
 });
 
 // ===========================
@@ -79,53 +64,69 @@ const upload = multer({
 // ===========================
 app.post("/upload", upload.single("video"), (req, res) => {
   if (!req.file) {
-    return res.status(400).json({ success: false, error: "No file uploaded" });
+    return res.status(400).json({ error: "No file uploaded" });
   }
-  res.json({ success: true, filename: req.file.filename });
+  res.json({ filename: req.file.filename });
+});
+
+// ===========================
+// Download video from URL
+// ===========================
+app.post("/download-url", (req, res) => {
+  const { url } = req.body;
+  if (!url) return res.status(400).json({ error: "URL is required" });
+
+  const filename = `url-${Date.now()}.mp4`;
+  const filePath = path.join(uploadDir, filename);
+  const file = fs.createWriteStream(filePath);
+
+  https.get(url, response => {
+    response.pipe(file);
+    file.on("finish", () => {
+      file.close(() => {
+        res.json({
+          filename,
+          url: `/uploads/${filename}`
+        });
+      });
+    });
+  }).on("error", () => {
+    fs.unlink(filePath, () => {});
+    res.status(500).json({ error: "Failed to download video" });
+  });
 });
 
 // ===========================
 // Trim route
 // ===========================
 app.post("/trim", (req, res) => {
-  const { filename } = req.body;
-  const start = Number(req.body.start);
-  const end = Number(req.body.end);
+  const { filename, start, end } = req.body;
 
-  if (!filename) {
-    return res.status(400).json({ success: false, error: "Filename is required" });
-  }
-
-  if (Number.isNaN(start) || Number.isNaN(end)) {
-    return res.status(400).json({ success: false, error: "Invalid start or end time" });
-  }
-
-  if (start >= end) {
-    return res.status(400).json({ success: false, error: "End time must be greater than start time" });
+  if (!filename) return res.status(400).json({ error: "Filename required" });
+  if (Number(start) >= Number(end)) {
+    return res.status(400).json({ error: "Invalid trim range" });
   }
 
   const inputPath = path.join(uploadDir, filename);
   if (!fs.existsSync(inputPath)) {
-    return res.status(404).json({ success: false, error: "Input file not found" });
+    return res.status(404).json({ error: "Input file not found" });
   }
 
-  const duration = end - start;
   const outputName = `trim-${Date.now()}.mp4`;
   const outputPath = path.join(trimmedDir, outputName);
 
-  const command = `"${ffmpegPath}" -y -ss ${start} -i "${inputPath}" -t ${duration} -c:v libx264 -c:a aac "${outputPath}"`;
+  const command = `"${ffmpegPath}" -y -ss ${start} -i "${inputPath}" -t ${end - start} -c:v libx264 -c:a aac "${outputPath}"`;
 
   exec(command, err => {
     if (err) {
-      console.error("FFmpeg error:", err);
-      return res.status(500).json({ success: false, error: "Video processing failed" });
+      return res.status(500).json({ error: "Video processing failed" });
     }
-    res.json({ success: true, url: `/trimmed/${outputName}` });
+    res.json({ url: `/trimmed/${outputName}` });
   });
 });
 
 // ===========================
-// Dynamic port
+// Dynamic port (Render)
 // ===========================
 const PORT = process.env.PORT || 10000;
 app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
@@ -133,19 +134,16 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 // ===========================
 // Auto-delete old files
 // ===========================
-const AUTO_DELETE_INTERVAL = 30 * 60 * 1000; // 30 minutes
-const FILE_MAX_AGE = 48 * 60 * 60 * 1000; // 48 hours
+const AUTO_DELETE_INTERVAL = 30 * 60 * 1000;
+const FILE_MAX_AGE = 48 * 60 * 60 * 1000;
 
 function deleteOldFiles(dir) {
   fs.readdir(dir, (err, files) => {
     if (err) return;
-
     files.forEach(file => {
       const filePath = path.join(dir, file);
       fs.stat(filePath, (err, stats) => {
-        if (err) return;
-
-        if (Date.now() - stats.mtimeMs > FILE_MAX_AGE) {
+        if (!err && Date.now() - stats.mtimeMs > FILE_MAX_AGE) {
           fs.unlink(filePath, () => {});
         }
       });
