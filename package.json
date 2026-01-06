@@ -1,6 +1,7 @@
 {
   "name": "video-trimmer-backend",
   "version": "1.0.0",
+  "private": true,
   "description": "Backend for video upload and trimming",
   "main": "server.js",
   "type": "commonjs",
@@ -18,11 +19,7 @@
     "nodemon": "^3.0.2"
   },
   "engines": {
-    "node": ">=18"
-  },
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/yourusername/video-trimmer-backend.git"
+    "node": "18.x"
   },
   "license": "MIT"
 }

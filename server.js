@@ -13,7 +13,7 @@ const app = express();
 // Middlewares (CORS FIXED)
 // ===========================
 app.use(cors({
-  origin: true,
+  origin: true, // allow all origins
   methods: ["GET", "POST", "OPTIONS"],
   allowedHeaders: ["Content-Type"]
 }));
@@ -63,9 +63,7 @@ const upload = multer({
 // Upload route
 // ===========================
 app.post("/upload", upload.single("video"), (req, res) => {
-  if (!req.file) {
-    return res.status(400).json({ error: "No file uploaded" });
-  }
+  if (!req.file) return res.status(400).json({ error: "No file uploaded" });
   res.json({ filename: req.file.filename });
 });
 
@@ -108,9 +106,7 @@ app.post("/trim", (req, res) => {
   }
 
   const inputPath = path.join(uploadDir, filename);
-  if (!fs.existsSync(inputPath)) {
-    return res.status(404).json({ error: "Input file not found" });
-  }
+  if (!fs.existsSync(inputPath)) return res.status(404).json({ error: "Input file not found" });
 
   const outputName = `trim-${Date.now()}.mp4`;
   const outputPath = path.join(trimmedDir, outputName);
@@ -118,9 +114,7 @@ app.post("/trim", (req, res) => {
   const command = `"${ffmpegPath}" -y -ss ${start} -i "${inputPath}" -t ${end - start} -c:v libx264 -c:a aac "${outputPath}"`;
 
   exec(command, err => {
-    if (err) {
-      return res.status(500).json({ error: "Video processing failed" });
-    }
+    if (err) return res.status(500).json({ error: "Video processing failed" });
     res.json({ url: `/trimmed/${outputName}` });
   });
 });
@@ -134,8 +128,8 @@ app.listen(PORT, () => console.log(`Server running on port ${PORT}`));
 // ===========================
 // Auto-delete old files
 // ===========================
-const AUTO_DELETE_INTERVAL = 30 * 60 * 1000;
-const FILE_MAX_AGE = 48 * 60 * 60 * 1000;
+const AUTO_DELETE_INTERVAL = 30 * 60 * 1000; // 30 min
+const FILE_MAX_AGE = 48 * 60 * 60 * 1000;    // 48 hours
 
 function deleteOldFiles(dir) {
   fs.readdir(dir, (err, files) => {
