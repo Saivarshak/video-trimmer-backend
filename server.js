@@ -1,174 +1,159 @@
 const express = require("express");
-const multer = require("multer");
 const cors = require("cors");
+const multer = require("multer");
 const { exec } = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
 const path = require("path");
 const fs = require("fs");
-const http = require("http");
 const https = require("https");
+const http = require("http");
 
 const app = express();
 
-// ===========================
-// Middlewares
-// ===========================
-app.use(cors({
-  origin: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
+app.use(cors());
+app.use(express.json());
 
-app.use(express.json({ limit: "500mb" }));
-app.use(express.urlencoded({ extended: true, limit: "500mb" }));
+const UPLOADS_DIR = path.join(__dirname, "uploads");
+if (!fs.existsSync(UPLOADS_DIR)) fs.mkdirSync(UPLOADS_DIR);
 
-// allow video preview across domains
-app.use((req, res, next) => {
-  res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
-  next();
-});
-
-// ===========================
-// Create folders
-// ===========================
-const uploadDir = path.join(__dirname, "uploads");
-const trimmedDir = path.join(__dirname, "trimmed");
-
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
-
-// ===========================
-// Static serving with content-type
-// ===========================
-app.use("/uploads", express.static(uploadDir, {
-  setHeaders: res => res.set("Content-Type", "video/mp4")
-}));
-
-app.use("/trimmed", express.static(trimmedDir, {
-  setHeaders: res => res.set("Content-Type", "video/mp4")
-}));
-
-// ===========================
-// Health check
-// ===========================
-app.get("/", (req, res) => {
-  res.send("Video Trimmer Backend Running");
-});
-
-// ===========================
-// Multer setup
-// ===========================
+// =====================
+// Multer upload storage
+// =====================
 const storage = multer.diskStorage({
-  destination: uploadDir,
-  filename: (req, file, cb) => {
-    cb(null, Date.now() + path.extname(file.originalname));
+  destination: function (req, file, cb) {
+    cb(null, UPLOADS_DIR);
+  },
+  filename: function (req, file, cb) {
+    const ext = path.extname(file.originalname);
+    const safeName = Date.now() + "_" + Math.round(Math.random() * 1e6) + ext;
+    cb(null, safeName);
   }
 });
 
-const upload = multer({
-  storage,
-  limits: { fileSize: 500 * 1024 * 1024 }
-});
+const upload = multer({ storage });
 
-// ===========================
-// Upload route  (UNCHANGED)
-// ===========================
+// =====================
+// Utility: download file from URL
+// =====================
+function downloadVideoFromUrl(videoUrl, outputPath) {
+  return new Promise((resolve, reject) => {
+    const protocol = videoUrl.startsWith("https") ? https : http;
+
+    protocol.get(videoUrl, response => {
+      if (response.statusCode !== 200) {
+        reject(new Error("Unable to download. Status " + response.statusCode));
+        return;
+      }
+
+      const fileStream = fs.createWriteStream(outputPath);
+      response.pipe(fileStream);
+
+      fileStream.on("finish", () => {
+        fileStream.close(resolve);
+      });
+    }).on("error", reject);
+  });
+}
+
+// =====================
+// Validate direct video URL
+// =====================
+function isDirectVideoUrl(url) {
+  if (!url) return false;
+
+  const validVideoExt = [".mp4", ".mov", ".webm", ".mkv"];
+
+  try {
+    const u = new URL(url);
+    return validVideoExt.some(ext => u.pathname.endsWith(ext));
+  } catch {
+    return false;
+  }
+}
+
+// =====================
+// Upload local file
+// =====================
 app.post("/upload", upload.single("video"), (req, res) => {
   if (!req.file) {
     return res.status(400).json({ error: "No file uploaded" });
   }
-  res.json({ filename: req.file.filename });
-});
 
-// ===========================
-// Download from URL
-// ===========================
-app.post("/download-url", (req, res) => {
-  const { url } = req.body;
-  if (!url) return res.status(400).json({ error: "URL required" });
-
-  const filename = `url-${Date.now()}.mp4`;
-  const filePath = path.join(uploadDir, filename);
-  const file = fs.createWriteStream(filePath);
-
-  const client = url.startsWith("https") ? https : http;
-
-  client.get(url, response => {
-    response.pipe(file);
-    file.on("finish", () => {
-      file.close(() => {
-        res.json({
-          filename,
-          url: `/uploads/${filename}`
-        });
-      });
-    });
-  }).on("error", () => {
-    fs.unlink(filePath, () => {});
-    res.status(500).json({ error: "Download failed" });
+  res.json({
+    message: "Uploaded successfully",
+    filepath: "/uploads/" + req.file.filename
   });
 });
 
-// ===========================
-// Trim route (UNCHANGED)
-// ===========================
-app.post("/trim", (req, res) => {
-  const { filename, start, end } = req.body;
+// =====================
+// Upload from URL
+// =====================
+app.post("/upload-url", async (req, res) => {
+  const { videoUrl } = req.body;
 
-  if (!filename) return res.status(400).json({ error: "Filename required" });
-  if (Number(start) >= Number(end)) {
-    return res.status(400).json({ error: "Invalid trim range" });
+  if (!videoUrl) {
+    return res.status(400).json({ error: "videoUrl required" });
   }
 
-  const inputPath = path.join(uploadDir, filename);
-  if (!fs.existsSync(inputPath)) {
-    return res.status(404).json({ error: "Input file not found" });
+  // ---- URL validation logic ----
+  if (!isDirectVideoUrl(videoUrl)) {
+    return res.status(400).json({
+      error: "This is not a direct video file URL (.mp4/.mov/.webm). " +
+        "Social media page links are not direct media files."
+    });
   }
 
-  const outputName = `trim-${Date.now()}.mp4`;
-  const outputPath = path.join(trimmedDir, outputName);
+  try {
+    const fileName = Date.now() + "_remote.mp4";
+    const filePath = path.join(UPLOADS_DIR, fileName);
 
-  const cmd =
-    `"${ffmpegPath}" -y -ss ${start} -i "${inputPath}" -t ${end - start} ` +
-    `-c:v libx264 -c:a aac "${outputPath}"`;
+    await downloadVideoFromUrl(videoUrl, filePath);
 
-  exec(cmd, err => {
-    if (err) {
-      return res.status(500).json({ error: "Video processing failed" });
+    res.json({
+      message: "Downloaded successfully",
+      filepath: "/uploads/" + fileName
+    });
+  } catch (err) {
+    res.status(500).json({ error: err.message });
+  }
+});
+
+// =====================
+// Trim endpoint
+// =====================
+app.post("/trim", async (req, res) => {
+  const { inputPath, start, duration } = req.body;
+
+  if (!inputPath || start == null || duration == null) {
+    return res.status(400).json({ error: "inputPath, start, duration required" });
+  }
+
+  const inputFile = path.join(__dirname, inputPath.replace("/uploads/", "uploads/"));
+  const outputFile = path.join(
+    UPLOADS_DIR,
+    "trimmed_" + Date.now() + ".mp4"
+  );
+
+  const cmd = `"${ffmpegPath}" -y -i "${inputFile}" -ss ${start} -t ${duration} -c copy "${outputFile}"`;
+
+  exec(cmd, (error) => {
+    if (error) {
+      return res.status(500).json({ error: "FFmpeg error: " + error.message });
     }
-    res.json({ url: `/trimmed/${outputName}` });
-  });
-});
 
-// ===========================
-// Start server
-// ===========================
-const PORT = process.env.PORT || 10000;
-app.listen(PORT, () => {
-  console.log("Server running on port", PORT);
-});
-
-// ===========================
-// Auto delete old files
-// ===========================
-const AUTO_DELETE_INTERVAL = 30 * 60 * 1000;
-const FILE_MAX_AGE = 48 * 60 * 60 * 1000;
-
-function deleteOldFiles(dir) {
-  fs.readdir(dir, (err, files) => {
-    if (err) return;
-    files.forEach(file => {
-      const filePath = path.join(dir, file);
-      fs.stat(filePath, (err, stats) => {
-        if (!err && Date.now() - stats.mtimeMs > FILE_MAX_AGE) {
-          fs.unlink(filePath, () => {});
-        }
-      });
+    res.json({
+      message: "Trimmed successfully",
+      filepath: "/uploads/" + path.basename(outputFile)
     });
   });
-}
+});
 
-setInterval(() => {
-  deleteOldFiles(uploadDir);
-  deleteOldFiles(trimmedDir);
-}, AUTO_DELETE_INTERVAL);
+// =====================
+// Static file route
+// =====================
+app.use("/uploads", express.static(UPLOADS_DIR));
+
+const PORT = process.env.PORT || 5000;
+app.listen(PORT, () => {
+  console.log("Server running on", PORT);
+});
