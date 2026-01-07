@@ -172,3 +172,7 @@ setInterval(() => {
   deleteOldFiles(uploadDir);
   deleteOldFiles(trimmedDir);
 }, AUTO_DELETE_INTERVAL);
+
+// ===========================
+// Export app for testing
+// ===========================
