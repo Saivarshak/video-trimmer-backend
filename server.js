@@ -32,10 +32,8 @@ app.use((req, res, next) => {
 // ===========================
 const uploadDir = path.join("/tmp", "uploads");
 const trimmedDir = path.join("/tmp", "trimmed");
-
-if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
-if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
-
+if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
+if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir, { recursive: true });
 // ===========================
 // Static serving
 // ===========================
