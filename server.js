@@ -3,14 +3,12 @@
 // ===========================
 const express = require("express");
 const cors = require("cors");
-const ffmpeg = require("fluent-ffmpeg");
+const { exec } = require("child_process");
 const ffmpegPath = require("ffmpeg-static");
 const path = require("path");
 const fs = require("fs");
 const http = require("http");
 const https = require("https");
-
-ffmpeg.setFfmpegPath(ffmpegPath);
 
 const app = express();
 
@@ -23,9 +21,8 @@ app.use(cors({
   allowedHeaders: ["Content-Type"]
 }));
 
-// Limit request body size
-app.use(express.json({ limit: "10mb" }));
-app.use(express.urlencoded({ extended: true, limit: "10mb" }));
+app.use(express.json({ limit: "500mb" }));
+app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 
 // Allow video preview across domains
 app.use((req, res, next) => {
@@ -59,7 +56,7 @@ app.get("/", (req, res) => {
 });
 
 // ===========================
-// Download from URL (streaming)
+// Download from URL
 // ===========================
 app.post("/download-url", (req, res) => {
   const { url } = req.body;
@@ -70,6 +67,7 @@ app.post("/download-url", (req, res) => {
   const file = fs.createWriteStream(filePath);
 
   const client = url.startsWith("https") ? https : http;
+
   const request = client.get(url, response => {
     response.pipe(file);
     file.on("finish", () => {
@@ -77,6 +75,7 @@ app.post("/download-url", (req, res) => {
     });
   });
 
+  // Timeout for slow URLs
   request.setTimeout(30000, () => {
     request.abort();
     fs.unlink(filePath, () => {});
@@ -90,10 +89,11 @@ app.post("/download-url", (req, res) => {
 });
 
 // ===========================
-// Trim route (streaming, memory-efficient)
+// Trim route
 // ===========================
 app.post("/trim", (req, res) => {
   const { filename, start, end } = req.body;
+
   if (!filename) return res.status(400).json({ error: "Filename required" });
   if (Number(start) >= Number(end)) return res.status(400).json({ error: "Invalid trim range" });
 
@@ -103,26 +103,24 @@ app.post("/trim", (req, res) => {
   const outputName = `trim-${Date.now()}.mp4`;
   const outputPath = path.join(trimmedDir, outputName);
 
-  ffmpeg(inputPath)
-    .setStartTime(start)
-    .setDuration(end - start)
-    .output(outputPath)
-    .videoCodec("libx264")
-    .audioCodec("aac")
-    .on("start", cmd => console.log("FFMPEG CMD:", cmd))
-    .on("error", (err, stdout, stderr) => {
-      console.error("❌ FFMPEG ERROR:", err.message);
+  const cmd =
+    `"${ffmpegPath}" -y -ss ${start} -i "${inputPath}" -t ${end - start} -c:v libx264 -c:a aac "${outputPath}"`;
+
+  console.log("FFMPEG CMD:", cmd);
+
+  exec(cmd, (err, stdout, stderr) => {
+    if (err) {
+      console.error("❌ FFMPEG ERROR:", err);
       console.error("STDERR:", stderr);
-      res.status(500).json({ error: "Video processing failed" });
-    })
-    .on("end", () => {
-      res.json({ url: `/trimmed/${outputName}` });
-    })
-    .run();
+      return res.status(500).json({ error: "Video processing failed" });
+    }
+    console.log("✅ Trim success:", outputPath);
+    res.json({ url: `/trimmed/${outputName}` });
+  });
 });
 
 // ===========================
-// Auto delete old files
+// Auto delete old files (optional)
 // ===========================
 const FILE_MAX_AGE = 48 * 60 * 60 * 1000; // 48 hours
 function deleteOldFiles(dir) {
