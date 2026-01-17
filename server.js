@@ -15,16 +15,10 @@ const app = express();
 // ===========================
 // Middlewares
 // ===========================
-app.use(cors({
-  origin: true,
-  methods: ["GET", "POST", "OPTIONS"],
-  allowedHeaders: ["Content-Type"]
-}));
-
+app.use(cors({ origin: true }));
 app.use(express.json({ limit: "500mb" }));
 app.use(express.urlencoded({ extended: true, limit: "500mb" }));
 
-// Allow video preview across domains
 app.use((req, res, next) => {
   res.setHeader("Cross-Origin-Resource-Policy", "cross-origin");
   next();
@@ -33,8 +27,8 @@ app.use((req, res, next) => {
 // ===========================
 // Create folders
 // ===========================
-const uploadDir = path.join("/tmp", "uploads");
-const trimmedDir = path.join("/tmp", "trimmed");
+const uploadDir = path.join(__dirname, "uploads");
+const trimmedDir = path.join(__dirname, "trimmed");
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir, { recursive: true });
 if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir, { recursive: true });
 
@@ -51,9 +45,7 @@ app.use("/trimmed", express.static(trimmedDir, {
 // ===========================
 // Health check
 // ===========================
-app.get("/", (req, res) => {
-  res.send("Video Trimmer Backend Running");
-});
+app.get("/", (req, res) => res.send("Video Trimmer Backend Running"));
 
 // ===========================
 // Download from URL
@@ -75,7 +67,6 @@ app.post("/download-url", (req, res) => {
     });
   });
 
-  // Timeout for slow URLs
   request.setTimeout(30000, () => {
     request.abort();
     fs.unlink(filePath, () => {});
@@ -120,7 +111,7 @@ app.post("/trim", (req, res) => {
 });
 
 // ===========================
-// Auto delete old files (optional)
+// Auto delete old files
 // ===========================
 const FILE_MAX_AGE = 48 * 60 * 60 * 1000; // 48 hours
 function deleteOldFiles(dir) {
@@ -139,7 +130,7 @@ function deleteOldFiles(dir) {
 setInterval(() => {
   deleteOldFiles(uploadDir);
   deleteOldFiles(trimmedDir);
-}, 30 * 60 * 1000); // every 30 min
+}, 30 * 60 * 1000);
 
 // ===========================
 // Start server
