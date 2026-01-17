@@ -211,8 +211,8 @@ app.use((req, res, next) => {
 // ===========================
 // Create folders
 // ===========================
-const uploadDir = path.join(__dirname, "uploads");
-const trimmedDir = path.join(__dirname, "trimmed");
+const uploadDir = path.join("/tmp", "uploads");
+const trimmedDir = path.join("/tmp", "trimmed");
 
 if (!fs.existsSync(uploadDir)) fs.mkdirSync(uploadDir);
 if (!fs.existsSync(trimmedDir)) fs.mkdirSync(trimmedDir);
